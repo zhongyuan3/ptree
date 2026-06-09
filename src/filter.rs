@@ -245,10 +245,13 @@ mod tests {
         fs::write(dir.join(".gitignore"), "ignored/\n").unwrap();
         fs::create_dir_all(dir.join("nested")).unwrap();
 
-        let mut filter = GitignoreFilter::new(&dir.join("nested")).unwrap();
-        filter.enter_dir(&dir.join("nested")).unwrap();
+        let nested = dir.join("nested");
+        let canonical_nested = nested.canonicalize().unwrap();
 
-        assert!(filter.should_ignore(&dir.join("nested/ignored"), true));
+        let mut filter = GitignoreFilter::new(&nested).unwrap();
+        filter.enter_dir(&canonical_nested).unwrap();
+
+        assert!(filter.should_ignore(&canonical_nested.join("ignored"), true));
         let _ = fs::remove_dir_all(&dir);
     }
 }
