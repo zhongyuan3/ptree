@@ -4,6 +4,7 @@ use std::path::Path;
 
 use clap::ValueEnum;
 
+use is_executable::IsExecutable;
 use theme::{ICON_THEME_REGISTRY, IconTheme};
 
 use crate::error::Error;
@@ -117,20 +118,21 @@ pub fn detect_entry_kind(path: &Path) -> Result<EntryKind, Error> {
     }
 
     if path.is_symlink() {
-        return Ok(EntryKind::Symlink);
+        return Ok(path
+            .read_link()
+            .map_err(|err| Error::ReadSymlink(path.display().to_string(), err))?
+            .is_dir()
+            .then(|| EntryKind::Directory)
+            .unwrap_or(EntryKind::Symlink));
+    }
+
+    if path.is_executable() {
+        return Ok(EntryKind::Executable);
     }
 
     let metadata = path
         .symlink_metadata()
         .map_err(|e| Error::GetMetadata(path.display().to_string(), e))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o111 != 0 {
-            return Ok(EntryKind::Executable);
-        }
-    }
 
     if metadata.permissions().readonly() {
         return Ok(EntryKind::ReadOnly);
@@ -143,6 +145,46 @@ pub fn detect_entry_kind(path: &Path) -> Result<EntryKind, Error> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ptree_icon_{name}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn create_symlink(original: &Path, link: &Path, target_is_dir: bool) -> std::io::Result<()> {
+        #[cfg(unix)]
+        {
+            let _ = target_is_dir;
+            std::os::unix::fs::symlink(original, link)
+        }
+        #[cfg(windows)]
+        {
+            if target_is_dir {
+                std::os::windows::fs::symlink_dir(original, link)
+            } else {
+                std::os::windows::fs::symlink_file(original, link)
+            }
+        }
+    }
+
+    fn symlink_privilege_denied(err: &std::io::Error) -> bool {
+        err.kind() == std::io::ErrorKind::PermissionDenied || err.raw_os_error() == Some(1314)
+    }
+
+    /// Returns `false` when symlink creation is unavailable (e.g. Windows without Developer Mode).
+    fn create_symlink_or_skip(original: &Path, link: &Path, target_is_dir: bool) -> bool {
+        match create_symlink(original, link, target_is_dir) {
+            Ok(()) => true,
+            Err(err) if symlink_privilege_denied(&err) => {
+                eprintln!("skipping: symlink creation requires privileges ({err})");
+                false
+            }
+            Err(err) => panic!("failed to create symlink: {err}"),
+        }
+    }
 
     #[test]
     fn nerd_font_icons_use_extension_and_special_maps() {
@@ -170,11 +212,51 @@ mod tests {
 
     #[test]
     fn detect_entry_kind_for_directory() {
-        let dir = std::env::temp_dir().join(format!("ptree_icon_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-
+        let dir = temp_dir("directory");
         assert_eq!(detect_entry_kind(&dir).unwrap(), EntryKind::Directory);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_entry_kind_for_directory_symlink() {
+        let dir = temp_dir("dir_symlink");
+        let target = dir.join("target_dir");
+        fs::create_dir_all(&target).unwrap();
+        let link = dir.join("dir_link");
+        if !create_symlink_or_skip(&target, &link, true) {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+
+        assert_eq!(detect_entry_kind(&link).unwrap(), EntryKind::Directory);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_entry_kind_for_file_symlink() {
+        let dir = temp_dir("file_symlink");
+        let target = dir.join("target.txt");
+        fs::write(&target, b"hello").unwrap();
+        let link = dir.join("file_link");
+        if !create_symlink_or_skip(&target, &link, false) {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+
+        assert_eq!(detect_entry_kind(&link).unwrap(), EntryKind::Symlink);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_entry_kind_for_broken_symlink() {
+        let dir = temp_dir("broken_symlink");
+        let link = dir.join("broken_link");
+        if !create_symlink_or_skip(&dir.join("missing.txt"), &link, false) {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+
+        assert_eq!(detect_entry_kind(&link).unwrap(), EntryKind::Symlink);
         let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -214,6 +214,10 @@ static EXTENSION_COLORS: Map<&str, ColorStyle> = phf_map! {
     "lock" => ColorStyle::plain(LOCK),
     "patch" => ColorStyle::plain(PATCH),
     "diff" => ColorStyle::plain(PATCH),
+    "o" => ColorStyle::plain(RED_RO),
+    "out" => ColorStyle::plain(GREEN_EXEC),
+    "obj" => ColorStyle::plain(RED_RO),
+    "exe" => ColorStyle::plain(GREEN_EXEC),
 };
 
 static SPECIAL_COLORS: Map<&str, ColorStyle> = phf_map! {

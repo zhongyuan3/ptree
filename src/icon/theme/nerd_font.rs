@@ -176,6 +176,8 @@ static EXTENSION_ICONS: Map<&str, &str> = phf_map! {
     // Misc
     "o" => " ",
     "out" => " ",
+    "obj" => " ",
+    "exe" => " ",
     "mk" => " ",
     "cmake" => " ",
 };

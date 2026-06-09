@@ -23,4 +23,7 @@ pub enum Error {
 
     #[error("ptree: failed to parse .gitignore file `{path}`: {detail}")]
     GitignoreParse { path: String, detail: String },
+
+    #[error("ptree: failed to read symlink `{0}`: {1}")]
+    ReadSymlink(String, #[source] std::io::Error),
 }
