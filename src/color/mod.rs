@@ -5,6 +5,7 @@ use std::path::Path;
 
 use clap::ValueEnum;
 use colored::ColoredString;
+use serde::Deserialize;
 use supports_color::{Stream, on_cached};
 
 pub use style::ColorStyle;
@@ -24,19 +25,51 @@ pub fn configure_color_output(use_color: bool) {
     colored::control::set_override(use_color);
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BuiltinColorTheme {
     #[default]
     #[value(name = "dark")]
     Dark,
+    #[value(name = "light")]
+    Light,
+    #[value(name = "auto")]
+    Auto,
 }
 
 impl BuiltinColorTheme {
     fn registry_key(self) -> &'static str {
         match self {
             Self::Dark => "dark",
+            Self::Light => "light",
+            Self::Auto => "auto",
         }
     }
+}
+
+pub fn resolve_color_theme(theme: BuiltinColorTheme) -> BuiltinColorTheme {
+    match theme {
+        BuiltinColorTheme::Auto => detect_terminal_theme(),
+        other => other,
+    }
+}
+
+fn detect_terminal_theme() -> BuiltinColorTheme {
+    if let Ok(fgbg) = std::env::var("COLORFGBG") {
+        if let Some(bg) = fgbg
+            .split(';')
+            .nth(1)
+            .and_then(|value| value.parse::<u8>().ok())
+        {
+            return if matches!(bg, 7 | 15) || bg >= 250 {
+                BuiltinColorTheme::Light
+            } else {
+                BuiltinColorTheme::Dark
+            };
+        }
+    }
+
+    BuiltinColorTheme::Dark
 }
 
 fn lookup_special<'a>(
@@ -68,10 +101,38 @@ fn lookup_color<'a>(theme: &'a ColorTheme, kind: EntryKind, path: &Path) -> &'a 
         return style;
     }
 
+    if kind == EntryKind::File {
+        return &ColorStyle::DEFAULT;
+    }
+
     theme
         .kinds
         .get(kind.registry_key())
         .unwrap_or(&theme.fallback)
+}
+
+fn adjust_style_for_light_theme(theme_name: &str, style: ColorStyle) -> ColorStyle {
+    if theme_name != "light" {
+        return style;
+    }
+
+    let Some(fg) = style.fg else {
+        return style;
+    };
+
+    let luminance = fg.r as u16 + fg.g as u16 + fg.b as u16;
+    if luminance <= 500 {
+        return style;
+    }
+
+    ColorStyle {
+        fg: Some(style::RgbValue::new(
+            (fg.r as u16 * 2 / 5) as u8,
+            (fg.g as u16 * 2 / 5) as u8,
+            (fg.b as u16 * 2 / 5) as u8,
+        )),
+        attrs: style.attrs,
+    }
 }
 
 pub struct Colors {
@@ -84,10 +145,16 @@ impl Colors {
     }
 
     pub fn with_theme(theme: BuiltinColorTheme) -> Self {
+        let resolved = resolve_color_theme(theme);
+        let registry_key = match resolved {
+            BuiltinColorTheme::Auto => "dark",
+            other => other.registry_key(),
+        };
+
         Self {
             theme: COLOR_THEME_REGISTRY
-                .get(theme.registry_key())
-                .expect("every BuiltinColorTheme must be registered in COLOR_THEME_REGISTRY"),
+                .get(registry_key)
+                .expect("every resolved BuiltinColorTheme must be registered"),
         }
     }
 
@@ -97,7 +164,8 @@ impl Colors {
     }
 
     pub fn style(&self, kind: EntryKind, path: &Path) -> ColorStyle {
-        *lookup_color(self.theme, kind, path)
+        let style = *lookup_color(self.theme, kind, path);
+        adjust_style_for_light_theme(self.theme.name, style)
     }
 
     pub fn paint(&self, kind: EntryKind, path: &Path, text: &str) -> ColoredString {
@@ -123,7 +191,7 @@ mod tests {
 
     #[test]
     fn dark_theme_colors_by_kind_and_extension() {
-        let colors = Colors::new();
+        let colors = Colors::with_theme(BuiltinColorTheme::Dark);
         assert_eq!(
             colors.style(EntryKind::Directory, Path::new("src")),
             ColorStyle::bold(BLUE_DIR)
@@ -135,6 +203,25 @@ mod tests {
         assert_eq!(
             colors.style(EntryKind::File, Path::new("app.py")),
             ColorStyle::plain(PYTHON)
+        );
+    }
+
+    #[test]
+    fn plain_files_are_not_colored() {
+        let colors = Colors::with_theme(BuiltinColorTheme::Dark);
+        assert_eq!(
+            colors.style(EntryKind::File, Path::new("notes")),
+            ColorStyle::DEFAULT
+        );
+        assert_eq!(
+            colors.style(EntryKind::File, Path::new("data.unknownext")),
+            ColorStyle::DEFAULT
+        );
+
+        let light = Colors::with_theme(BuiltinColorTheme::Light);
+        assert_eq!(
+            light.style(EntryKind::File, Path::new("notes")),
+            ColorStyle::DEFAULT
         );
     }
 
@@ -163,5 +250,39 @@ mod tests {
     #[test]
     fn no_color_flag_always_disables_color() {
         assert!(!resolve_use_color(true));
+    }
+
+    #[test]
+    fn auto_theme_selects_light_for_light_background() {
+        assert_eq!(
+            detect_terminal_theme_from_fgbg("0;15"),
+            BuiltinColorTheme::Light
+        );
+        assert_eq!(
+            detect_terminal_theme_from_fgbg("0;0"),
+            BuiltinColorTheme::Dark
+        );
+    }
+
+    #[test]
+    fn light_theme_darkens_high_luminance_extension_colors() {
+        let colors = Colors::with_theme(BuiltinColorTheme::Light);
+        let style = colors.style(EntryKind::File, Path::new("README.md"));
+        let fg = style.fg.expect("readme should be colored");
+        let luminance = fg.r as u16 + fg.g as u16 + fg.b as u16;
+        assert!(luminance <= 500);
+    }
+
+    fn detect_terminal_theme_from_fgbg(fgbg: &str) -> BuiltinColorTheme {
+        let bg = fgbg
+            .split(';')
+            .nth(1)
+            .and_then(|value| value.parse::<u8>().ok());
+        if let Some(bg) = bg {
+            if matches!(bg, 7 | 15) || bg >= 250 {
+                return BuiltinColorTheme::Light;
+            }
+        }
+        BuiltinColorTheme::Dark
     }
 }

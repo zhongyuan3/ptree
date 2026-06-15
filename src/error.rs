@@ -26,4 +26,19 @@ pub enum Error {
 
     #[error("ptree: failed to read symlink `{0}`: {1}")]
     ReadSymlink(String, #[source] std::io::Error),
+
+    #[error("ptree: invalid glob pattern `{pattern}`: {detail}")]
+    GlobParse { pattern: String, detail: String },
+
+    #[error("ptree: config file not found: `{0}`")]
+    ConfigNotFound(String),
+
+    #[error("ptree: failed to read config file `{0}`: {1}")]
+    ReadConfig(String, #[source] std::io::Error),
+
+    #[error("ptree: failed to parse config file `{0}`: {1}")]
+    ParseConfig(String, String),
+
+    #[error("ptree: failed to encode JSON output: {0}")]
+    JsonEncode(#[from] serde_json::Error),
 }

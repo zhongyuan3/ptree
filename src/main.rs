@@ -5,17 +5,27 @@ mod error;
 mod filter;
 mod format;
 mod icon;
+mod settings;
+mod sort;
 
 use std::process::exit;
 
 use clap::Parser;
 
-use crate::command::CmdArgs;
-use crate::command::exec_cmd;
+use crate::command::{App, AppCommand, exec_cmd, generate_completions};
 
 fn main() {
-    if let Err(e) = exec_cmd(&CmdArgs::parse()) {
-        eprintln!("{}", e);
+    let app = App::parse();
+    let result = match app.command {
+        Some(AppCommand::Completions { shell }) => {
+            generate_completions(shell);
+            Ok(())
+        }
+        None => exec_cmd(&app.args),
+    };
+
+    if let Err(error) = result {
+        eprintln!("{error}");
         exit(1);
     }
 }

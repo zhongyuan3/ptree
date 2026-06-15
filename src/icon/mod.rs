@@ -3,13 +3,15 @@ pub mod theme;
 use std::path::Path;
 
 use clap::ValueEnum;
+use serde::Deserialize;
 
 use is_executable::IsExecutable;
 use theme::{ICON_THEME_REGISTRY, IconTheme};
 
 use crate::error::Error;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BuiltinIconTheme {
     #[default]
     NerdFont,

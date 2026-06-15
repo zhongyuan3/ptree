@@ -81,7 +81,7 @@ static KIND_COLORS: Map<&str, ColorStyle> = phf_map! {
     "file" => ColorStyle::DEFAULT,
 };
 
-static EXTENSION_COLORS: Map<&str, ColorStyle> = phf_map! {
+pub(crate) static EXTENSION_COLORS: Map<&str, ColorStyle> = phf_map! {
     "c" => ColorStyle::plain(C_BLUE),
     "h" => ColorStyle::plain(HEADER),
     "cpp" => ColorStyle::plain(CPP),
@@ -220,7 +220,7 @@ static EXTENSION_COLORS: Map<&str, ColorStyle> = phf_map! {
     "exe" => ColorStyle::plain(GREEN_EXEC),
 };
 
-static SPECIAL_COLORS: Map<&str, ColorStyle> = phf_map! {
+pub(crate) static SPECIAL_COLORS: Map<&str, ColorStyle> = phf_map! {
     "makefile" => ColorStyle::plain(GRAY_DIM),
     "gnumakefile" => ColorStyle::plain(GRAY_DIM),
     "justfile" => ColorStyle::plain(GRAY_DIM),

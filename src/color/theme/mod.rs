@@ -4,6 +4,7 @@ use phf_macros::phf_map;
 use crate::color::style::ColorStyle;
 
 pub mod dark;
+pub mod light;
 
 pub struct ColorTheme {
     pub name: &'static str,
@@ -15,4 +16,5 @@ pub struct ColorTheme {
 
 pub static COLOR_THEME_REGISTRY: Map<&str, ColorTheme> = phf_map! {
     "dark" => dark::THEME,
+    "light" => light::THEME,
 };
