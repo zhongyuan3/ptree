@@ -120,12 +120,17 @@ pub fn detect_entry_kind(path: &Path) -> Result<EntryKind, Error> {
     }
 
     if path.is_symlink() {
-        return Ok(path
-            .read_link()
-            .map_err(|err| Error::ReadSymlink(path.display().to_string(), err))?
-            .is_dir()
-            .then(|| EntryKind::Directory)
-            .unwrap_or(EntryKind::Symlink));
+        return Ok(
+            if path
+                .read_link()
+                .map_err(|err| Error::ReadSymlink(path.display().to_string(), err))?
+                .is_dir()
+            {
+                EntryKind::Directory
+            } else {
+                EntryKind::Symlink
+            },
+        );
     }
 
     if path.is_executable() {

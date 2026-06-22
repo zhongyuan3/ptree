@@ -55,18 +55,17 @@ pub fn resolve_color_theme(theme: BuiltinColorTheme) -> BuiltinColorTheme {
 }
 
 fn detect_terminal_theme() -> BuiltinColorTheme {
-    if let Ok(fgbg) = std::env::var("COLORFGBG") {
-        if let Some(bg) = fgbg
+    if let Ok(fgbg) = std::env::var("COLORFGBG")
+        && let Some(bg) = fgbg
             .split(';')
             .nth(1)
             .and_then(|value| value.parse::<u8>().ok())
-        {
-            return if matches!(bg, 7 | 15) || bg >= 250 {
-                BuiltinColorTheme::Light
-            } else {
-                BuiltinColorTheme::Dark
-            };
-        }
+    {
+        return if matches!(bg, 7 | 15) || bg >= 250 {
+            BuiltinColorTheme::Light
+        } else {
+            BuiltinColorTheme::Dark
+        };
     }
 
     BuiltinColorTheme::Dark
@@ -278,10 +277,10 @@ mod tests {
             .split(';')
             .nth(1)
             .and_then(|value| value.parse::<u8>().ok());
-        if let Some(bg) = bg {
-            if matches!(bg, 7 | 15) || bg >= 250 {
-                return BuiltinColorTheme::Light;
-            }
+        if let Some(bg) = bg
+            && (matches!(bg, 7 | 15) || bg >= 250)
+        {
+            return BuiltinColorTheme::Light;
         }
         BuiltinColorTheme::Dark
     }
